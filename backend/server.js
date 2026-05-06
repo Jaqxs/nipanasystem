@@ -54,9 +54,24 @@ app.get('/', (req, res) => {
 const PORT = process.env.PORT || 5000;
 
 sequelize.sync({ alter: true })
-  .then(() => {
+  .then(async () => {
     const dbType = process.env.DATABASE_URL ? 'PostgreSQL' : 'SQLite';
     console.log(`Connected to ${dbType} and models synchronized.`);
+    
+    // Auto-seed demo users if database is empty
+    const User = require('./models/User');
+    const bcrypt = require('bcryptjs');
+    const userCount = await User.count();
+    if (userCount === 0) {
+      console.log('Seeding demo users...');
+      const hashedPassword = await bcrypt.hash('demo', 10);
+      await User.bulkCreate([
+        { id: '92c6d291-fc13-469f-a690-964b5f140d05', name: 'Julius Assey', email: 'j.assey@nipana.tz', password: hashedPassword, role: 'admin' },
+        { id: '92c6d291-fc13-469f-a690-964b5f140d06', name: 'Maria Rweyemamu', email: 'm.rwey@nipana.tz', password: hashedPassword, role: 'ops' }
+      ]);
+      console.log('Demo users seeded successfully.');
+    }
+
     app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
   })
   .catch(err => console.error('Database connection error:', err));
