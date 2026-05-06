@@ -9,8 +9,22 @@ dotenv.config();
 const app = express();
 
 // Middleware
+const allowedOrigins = [
+  'https://system.nipanaatlas.co.tz',
+  'http://localhost:3000',
+  'http://localhost:3001'
+];
+
 app.use(cors({
-  origin: '*',
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
@@ -38,12 +52,13 @@ app.get('/', (req, res) => {
 // Database Connection
 const PORT = process.env.PORT || 5000;
 
-sequelize.sync({ alter: true }) // Update tables to match models
+sequelize.sync({ alter: true })
   .then(() => {
-    console.log('Connected to SQLite');
+    const dbType = process.env.DATABASE_URL ? 'PostgreSQL' : 'SQLite';
+    console.log(`Connected to ${dbType} and models synchronized.`);
     app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
   })
-  .catch(err => console.error('SQLite connection error:', err));
+  .catch(err => console.error('Database connection error:', err));
 
 // Global Error Handler
 app.use((err, req, res, next) => {
