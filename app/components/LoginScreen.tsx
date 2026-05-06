@@ -47,7 +47,7 @@ export function LoginScreen() {
   };
 
   return (
-    <div className="min-h-screen relative flex items-center justify-center overflow-hidden bg-ink-950">
+    <div className="h-screen w-screen relative flex items-center justify-center bg-ink-950 overflow-hidden">
       {/* Background Slider - now full screen */}
       <div className="absolute inset-0 z-0">
         {SLIDE_IMAGES.map((img, idx) => (
@@ -74,7 +74,7 @@ export function LoginScreen() {
       </div>
 
       {/* Content Overlay */}
-      <div className="relative z-10 w-full max-w-[480px] px-6 py-12">
+      <div className="relative z-10 w-full max-w-[480px] px-6 py-12 max-h-screen overflow-y-auto">
         <div 
           className="bg-white/95 backdrop-blur-xl rounded-[28px] shadow-[0_32px_64px_-16px_rgba(0,0,0,0.3)] border border-white/20 overflow-hidden"
         >
