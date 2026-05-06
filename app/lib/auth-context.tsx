@@ -45,8 +45,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     // Auto-login for configuration convenience if not authenticated
     if (!localStorage.getItem(STORAGE_KEY)) {
-      console.log("[Auth] Attempting auto-login for development/config...");
-      login("j.assey@nipana.tz", "demo");
+      setTimeout(() => {
+        console.log("[Auth] Attempting auto-login for development/config...");
+        login("j.assey@nipana.tz", "demo");
+      }, 1000);
     }
   }, []);
 
