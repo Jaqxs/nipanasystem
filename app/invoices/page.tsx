@@ -1,40 +1,33 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState, useRef, forwardRef } from "react";
 import { PageHeader } from "../components/PageHeader";
 import { Badge, statusToTone } from "../components/Badge";
 import { Modal } from "../components/Modal";
 import { RowActionsMenu } from "../components/RowActionsMenu";
 import { ExportModal } from "../components/ExportModal";
+import api from "../lib/api";
 import { useCurrency } from "../lib/currency-context";
 import { useDateRange } from "../lib/date-range-context";
+import logo from "../asset/logo.jpeg";
+import html2canvas from "html2canvas";
+import { jsPDF } from "jspdf";
 
-const TABS = ["All", "Draft", "Pending", "Sent", "Paid", "Overdue"];
+const TABS = ["All", "Draft", "Sent", "Paid", "Overdue"];
 
 interface Invoice {
-  no: string; customer: string; issued: string; due: string;
-  amount: number; status: string;
+  id: string;
+  no: string;
+  customer: string;
+  customerName?: string;
+  customerContact?: { name: string; email?: string; phone?: string; location?: string };
+  issued: string;
+  due: string;
+  amount: number;
+  status: string;
+  items: any[];
+  notes: string;
+  tax: number;
 }
-
-const INVOICES: Invoice[] = [
-  { no: "INV-2026-000482", customer: "Mwanza Refinery Ltd.", issued: "May 04", due: "May 11", amount: 18_400, status: "Sent" },
-  { no: "INV-2026-000481", customer: "Patel Jewellers", issued: "May 03", due: "May 12", amount: 9_650, status: "Paid" },
-  { no: "INV-2026-000480", customer: "Sukuma Gold Co.", issued: "May 03", due: "May 10", amount: 4_840, status: "Sent" },
-  { no: "INV-2026-000479", customer: "Lake Zone Traders", issued: "May 02", due: "May 09", amount: 6_200, status: "Overdue" },
-  { no: "INV-2026-000478", customer: "Coastal Buyers", issued: "May 02", due: "May 16", amount: 11_300, status: "Pending" },
-  { no: "INV-2026-000477", customer: "Bulyanhulu Buyers", issued: "May 01", due: "May 08", amount: 3_210, status: "Overdue" },
-  { no: "INV-2026-000476", customer: "Mara Refining", issued: "May 01", due: "May 14", amount: 7_800, status: "Draft" },
-  { no: "INV-2026-000475", customer: "Geita Cooperative", issued: "Apr 30", due: "May 14", amount: 22_800, status: "Paid" },
-  { no: "INV-2026-000474", customer: "Patel Jewellers", issued: "Apr 30", due: "May 14", amount: 5_420, status: "Sent" },
-  { no: "INV-2026-000473", customer: "Mwanza Refinery Ltd.", issued: "Apr 29", due: "May 13", amount: 14_900, status: "Paid" },
-  { no: "INV-2026-000472", customer: "Northern Crafts", issued: "Apr 29", due: "May 13", amount: 2_840, status: "Sent" },
-  { no: "INV-2026-000471", customer: "Lake Zone Traders", issued: "Apr 28", due: "May 05", amount: 8_120, status: "Overdue" },
-  { no: "INV-2026-000470", customer: "Sukuma Gold Co.", issued: "Apr 27", due: "May 11", amount: 3_980, status: "Paid" },
-  { no: "INV-2026-000469", customer: "Coastal Buyers", issued: "Apr 26", due: "May 10", amount: 6_700, status: "Paid" },
-  { no: "INV-2026-000468", customer: "Bulyanhulu Buyers", issued: "Apr 25", due: "May 09", amount: 4_300, status: "Pending" },
-  { no: "INV-2026-000467", customer: "Patel Jewellers", issued: "Apr 25", due: "May 09", amount: 12_600, status: "Paid" },
-  { no: "INV-2026-000466", customer: "Mara Refining", issued: "Apr 24", due: "May 08", amount: 8_900, status: "Paid" },
-  { no: "INV-2026-000465", customer: "Northern Crafts", issued: "Apr 23", due: "May 07", amount: 1_540, status: "Sent" },
-];
 
 export default function InvoicesPage() {
   const [tab, setTab] = useState("All");
@@ -43,19 +36,82 @@ export default function InvoicesPage() {
   const [creating, setCreating] = useState(false);
   const [reminding, setReminding] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [allInvoices, setAllInvoices] = useState<Invoice[]>([]);
+  const [contacts, setContacts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
   const { format } = useCurrency();
   const { inRangeFromShortDate, label: rangeLabel } = useDateRange();
+  const invoiceRef = useRef<HTMLDivElement>(null);
 
-  const filtered = INVOICES
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const [invRes, contactRes] = await Promise.all([
+        api.get("/invoices"),
+        api.get("/contacts?type=customer")
+      ]);
+      setAllInvoices(invRes.data);
+      setContacts(contactRes.data);
+    } catch (err) {
+      console.error("Failed to fetch invoices", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDownloadPDF = async () => {
+    if (!preview || !invoiceRef.current) return;
+    setDownloading(true);
+    setTimeout(async () => {
+      try {
+        const canvas = await html2canvas(invoiceRef.current!, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: "#ffffff",
+        });
+        const imgData = canvas.toDataURL("image/jpeg", 1.0);
+        const pdf = new jsPDF("p", "mm", "a4");
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const ratio = Math.min(pageWidth / canvas.width, pageHeight / canvas.height);
+        pdf.addImage(imgData, "JPEG", (pageWidth - canvas.width * ratio) / 2, 0, canvas.width * ratio, canvas.height * ratio);
+        pdf.save(`Invoice-${preview.no}.pdf`);
+      } catch (err) {
+        console.error("PDF generation failed", err);
+        alert("Failed to generate PDF.");
+      } finally {
+        setDownloading(false);
+      }
+    }, 100);
+  };
+
+  const handleStatusUpdate = async (id: string, newStatus: string) => {
+    try {
+      await api.put(`/invoices/${id}`, { status: newStatus });
+      fetchData();
+    } catch (err) {
+      alert("Failed to update status.");
+    }
+  };
+
+  const filtered = allInvoices
     .filter((i) => inRangeFromShortDate(i.issued))
-    .filter((i) => tab === "All" || i.status === tab)
+    .filter((i) => tab === "All" || i.status.toLowerCase() === tab.toLowerCase())
     .filter((i) => !search ||
       i.no.toLowerCase().includes(search.toLowerCase()) ||
-      i.customer.toLowerCase().includes(search.toLowerCase()));
+      (i.customerContact?.name || "").toLowerCase().includes(search.toLowerCase()) ||
+      (i.customerName || "").toLowerCase().includes(search.toLowerCase()));
 
-  const totalReceivable = INVOICES.filter((i) => ["Sent", "Pending", "Overdue"].includes(i.status))
-    .reduce((a, b) => a + b.amount, 0);
-  const overdue = INVOICES.filter((i) => i.status === "Overdue").reduce((a, b) => a + b.amount, 0);
+  const totalReceivable = allInvoices.filter((i) => ["sent", "overdue"].includes(i.status.toLowerCase()))
+    .reduce((a, b) => a + Number(b.amount), 0);
+  const overdue = allInvoices.filter((i) => i.status.toLowerCase() === "overdue").reduce((a, b) => a + Number(b.amount), 0);
 
   return (
     <div>
@@ -78,21 +134,9 @@ export default function InvoicesPage() {
       />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="surface p-5">
-          <div className="text-[11px] uppercase tracking-[0.14em] text-ink-muted">Total receivable</div>
-          <div className="font-numeric text-[30px] text-ink mt-2">{format(totalReceivable)}</div>
-          <div className="text-xs text-ink-muted mt-2">Pending + Sent + Overdue</div>
-        </div>
-        <div className="surface p-5">
-          <div className="text-[11px] uppercase tracking-[0.14em] text-ink-muted">Overdue</div>
-          <div className="font-numeric text-[30px] text-rose-700 mt-2">{format(overdue)}</div>
-          <div className="text-xs text-ink-muted mt-2">2 invoices · longest 14 days</div>
-        </div>
-        <div className="surface p-5">
-          <div className="text-[11px] uppercase tracking-[0.14em] text-ink-muted">Days Sales Outstanding</div>
-          <div className="font-numeric text-[30px] text-ink mt-2">23.4 <span className="text-base text-ink-muted">days</span></div>
-          <div className="text-xs text-sage-700 mt-2">▼ 2.1 vs last month</div>
-        </div>
+        <Stat label="Total receivable" value={format(totalReceivable)} hint="Sent + Overdue" icon="ri-money-dollar-circle-line" />
+        <Stat label="Overdue" value={format(overdue)} hint={`${allInvoices.filter(i => i.status.toLowerCase() === "overdue").length} invoices`} icon="ri-error-warning-line" tone="rose" />
+        <Stat label="Total Paid" value={format(allInvoices.filter(i => i.status.toLowerCase() === "paid").reduce((a,b) => a + Number(b.amount), 0))} hint="Lifetime revenue" icon="ri-checkbox-circle-line" tone="sage" />
       </div>
 
       <div className="surface-flat p-3 flex flex-wrap items-center gap-3 mb-4">
@@ -131,27 +175,25 @@ export default function InvoicesPage() {
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 ? (
+            {loading ? (
+              <tr><td colSpan={7} className="text-center py-20 text-ink-faint">Loading invoices...</td></tr>
+            ) : filtered.length === 0 ? (
               <tr><td colSpan={7} className="text-center text-ink-faint py-12">No invoices match your filters.</td></tr>
             ) : filtered.map((i) => (
-              <tr key={i.no} className="clickable" onClick={() => setPreview(i)}>
+              <tr key={i.id} className="clickable" onClick={() => setPreview(i)}>
                 <td className="font-numeric text-ink">{i.no}</td>
-                <td className="text-ink-soft">{i.customer}</td>
-                <td className="text-ink-muted">{i.issued}</td>
-                <td className="text-ink-muted">{i.due}</td>
-                <td className="text-right font-numeric text-ink">{format(i.amount)}</td>
-                <td><Badge tone={statusToTone(i.status)}>{i.status}</Badge></td>
+                <td className="text-ink-soft">{i.customerContact?.name || i.customerName || "N/A"}</td>
+                <td className="text-ink-muted">{new Date(i.issued).toLocaleDateString()}</td>
+                <td className="text-ink-muted">{new Date(i.due).toLocaleDateString()}</td>
+                <td className="text-right font-numeric text-ink">{format(Number(i.amount))}</td>
+                <td><Badge tone={statusToTone(i.status.toLowerCase())}>{i.status}</Badge></td>
                 <td className="text-right" onClick={(e) => e.stopPropagation()}>
                   <RowActionsMenu actions={[
                     { label: "View invoice", icon: "ri-eye-line", onClick: () => setPreview(i) },
-                    { label: "Download PDF", icon: "ri-download-line", onClick: () => alert(`Download ${i.no}`) },
-                    { label: "Email to customer", icon: "ri-mail-send-line", onClick: () => alert(`Email ${i.customer}`) },
-                    ...(i.status === "Overdue" || i.status === "Sent" ? [
-                      { label: "Send reminder", icon: "ri-notification-line", onClick: () => alert("Reminder sent") },
-                      { label: "Mark as paid", icon: "ri-check-double-line", onClick: () => alert("Marked paid") },
+                    ...(i.status.toLowerCase() !== "paid" ? [
+                      { label: "Mark as paid", icon: "ri-check-double-line", onClick: () => handleStatusUpdate(i.id, "paid") },
                     ] : []),
-                    { label: "Duplicate", icon: "ri-file-copy-line", onClick: () => alert("Duplicated"), divider: true },
-                    { label: "Cancel invoice", icon: "ri-close-circle-line", onClick: () => alert("Cancelled"), danger: true, divider: true },
+                    { label: "Cancel invoice", icon: "ri-close-circle-line", onClick: () => handleStatusUpdate(i.id, "cancelled"), danger: true, divider: true },
                   ]} />
                 </td>
               </tr>
@@ -160,149 +202,172 @@ export default function InvoicesPage() {
         </table>
       </div>
 
-      {/* Invoice preview modal */}
       <Modal open={!!preview} onClose={() => setPreview(null)} size="xl"
         eyebrow="Invoice preview" title={preview?.no}
         footer={
           <>
             <button className="btn-secondary" onClick={() => setPreview(null)}>Close</button>
-            <button className="btn-secondary"><i className="ri-mail-send-line" />Email to customer</button>
-            <button className="btn-primary"><i className="ri-download-line" />Download PDF</button>
+            <button 
+              className="btn-primary" 
+              onClick={handleDownloadPDF}
+              disabled={downloading}
+            >
+              {downloading ? (
+                <><i className="ri-loader-4-line animate-spin" /> Generating...</>
+              ) : (
+                <><i className="ri-download-line" /> Download PDF</>
+              )}
+            </button>
           </>
         }>
-        {preview && <InvoicePreview invoice={preview} />}
+        {preview && <InvoicePreview invoice={preview} ref={invoiceRef} />}
       </Modal>
 
-      {/* New invoice modal */}
       <Modal open={creating} onClose={() => setCreating(false)} size="lg"
         eyebrow="Section 7 · New invoice" title="Create invoice"
-        footer={<><button className="btn-secondary" onClick={() => setCreating(false)}>Cancel</button><button className="btn-primary" onClick={() => setCreating(false)}>Save as draft</button></>}>
-        <NewInvoiceForm />
+        footer={<><button className="btn-secondary" onClick={() => setCreating(false)}>Cancel</button><button className="btn-primary" form="new-invoice-form" disabled={busy}>Save as draft</button></>}>
+        <NewInvoiceForm contacts={contacts} onSave={async (p) => {
+          setBusy(true);
+          try {
+            await api.post("/invoices", p);
+            setCreating(false);
+            fetchData();
+          } catch (err) {
+            alert("Failed to create invoice. " + ((err as any).response?.data?.message || "Check your connection."));
+          } finally {
+            setBusy(false);
+          }
+        }} />
       </Modal>
 
       <ExportModal open={exportOpen} onClose={() => setExportOpen(false)} resource="invoices" rowCount={filtered.length} />
-
-      {/* Reminders modal */}
-      <Modal open={reminding} onClose={() => setReminding(false)}
-        eyebrow="Receivables" title="Send overdue reminders"
-        footer={<><button className="btn-secondary" onClick={() => setReminding(false)}>Cancel</button><button className="btn-primary" onClick={() => setReminding(false)}>Send to 2 customers</button></>}>
-        <p className="text-sm text-ink-muted mb-4">A polite reminder will be emailed to customers with overdue invoices.</p>
-        <ul className="space-y-2 text-sm">
-          {INVOICES.filter((i) => i.status === "Overdue").map((i) => (
-            <li key={i.no} className="flex items-center gap-3 surface-flat p-3">
-              <i className="ri-mail-line text-gold-600" />
-              <span className="text-ink">{i.customer}</span>
-              <span className="text-ink-muted ml-auto font-numeric">{format(i.amount)}</span>
-            </li>
-          ))}
-        </ul>
-      </Modal>
     </div>
   );
 }
 
-function InvoicePreview({ invoice }: { invoice: Invoice }) {
+const InvoicePreview = forwardRef<HTMLDivElement, { invoice: Invoice }>(({ invoice }, ref) => {
   const { format } = useCurrency();
   return (
-    <div>
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-12 h-12 rounded-lg flex items-center justify-center" style={{ background: "#b8893d" }}>
-              <i className="ri-coin-line text-white text-2xl" />
-            </div>
-            <div>
-              <div className="font-display text-xl text-ink">NIPANA Atlas</div>
-              <div className="text-xs text-ink-muted">Mwanza, Tanzania · TIN 109-204-883</div>
-            </div>
+    <div ref={ref} className="bg-white p-8">
+      <div className="flex items-start justify-between mb-8">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-lg overflow-hidden border border-line bg-white">
+            <img src={logo.src} alt="Logo" className="w-full h-full object-cover" />
+          </div>
+          <div>
+            <div className="font-display text-xl text-ink">NIPANA Atlas</div>
+            <div className="text-xs text-ink-muted">Mwanza, Tanzania</div>
           </div>
         </div>
         <div className="text-right">
           <div className="font-display text-2xl text-ink">Invoice</div>
           <div className="text-sm text-ink-muted font-numeric">{invoice.no}</div>
-          <div className="mt-2"><Badge tone={statusToTone(invoice.status)}>{invoice.status}</Badge></div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-6 mb-6">
+      <div className="grid grid-cols-2 gap-8 mb-8">
         <div>
           <div className="text-[11px] uppercase tracking-[0.14em] text-ink-muted mb-1">Bill to</div>
-          <div className="font-medium text-ink">{invoice.customer}</div>
-          <div className="text-sm text-ink-muted">PO Box 1284, Mwanza<br />acct@example.tz</div>
+          <div className="font-medium text-ink">{invoice.customerContact?.name || invoice.customerName || "N/A"}</div>
+          <div className="text-sm text-ink-muted">{invoice.customerContact?.location || "N/A"}</div>
         </div>
         <div className="text-right">
           <div className="text-[11px] uppercase tracking-[0.14em] text-ink-muted mb-1">Issued · Due</div>
-          <div className="text-ink">{invoice.issued}, 2026</div>
-          <div className="text-ink">{invoice.due}, 2026</div>
+          <div className="text-ink">{new Date(invoice.issued).toLocaleDateString()}</div>
+          <div className="text-ink">{new Date(invoice.due).toLocaleDateString()}</div>
         </div>
       </div>
 
       <table className="ledger">
         <thead>
-          <tr><th>Description</th><th>Weight</th><th>Purity</th><th className="text-right">Unit price</th><th className="text-right">Subtotal</th></tr>
+          <tr><th>Description</th><th className="text-right">Amount</th></tr>
         </thead>
         <tbody>
-          <tr>
-            <td>Refined gold — Batch reference</td>
-            <td className="font-numeric">240.5 g</td>
-            <td>24K</td>
-            <td className="text-right font-numeric">$74.05</td>
-            <td className="text-right font-numeric text-ink">{format(invoice.amount * 0.97)}</td>
-          </tr>
-          <tr>
-            <td>Assay & certification</td>
-            <td>—</td><td>—</td>
-            <td className="text-right font-numeric">{format(invoice.amount * 0.03)}</td>
-            <td className="text-right font-numeric text-ink">{format(invoice.amount * 0.03)}</td>
-          </tr>
+          {(invoice.items || []).map((item: any, idx: number) => (
+            <tr key={idx}>
+              <td>{item.desc}</td>
+              <td className="text-right font-numeric text-ink">{format(item.amount)}</td>
+            </tr>
+          ))}
+          {(!invoice.items || invoice.items.length === 0) && (
+             <tr>
+               <td>General services/goods</td>
+               <td className="text-right font-numeric text-ink">{format(Number(invoice.amount))}</td>
+             </tr>
+          )}
         </tbody>
       </table>
 
-      <div className="flex justify-end mt-6">
+      <div className="flex justify-end mt-8">
         <div className="w-64 space-y-2 text-sm">
-          <div className="flex justify-between text-ink-muted"><span>Subtotal</span><span className="font-numeric">{format(invoice.amount)}</span></div>
-          <div className="flex justify-between text-ink-muted"><span>Tax</span><span className="font-numeric">$0.00</span></div>
+          <div className="flex justify-between text-ink-muted"><span>Subtotal</span><span className="font-numeric">{format(Number(invoice.amount))}</span></div>
           <div className="divider-rule" />
-          <div className="flex justify-between text-ink"><span>Total due</span><span className="font-numeric text-lg">{format(invoice.amount)}</span></div>
+          <div className="flex justify-between text-ink"><span>Total due</span><span className="font-numeric text-lg">{format(Number(invoice.amount))}</span></div>
         </div>
       </div>
     </div>
   );
-}
+});
 
-function NewInvoiceForm() {
-  const [lines, setLines] = useState([{ desc: "", weight: "", karat: "24", price: "" }]);
+InvoicePreview.displayName = "InvoicePreview";
+
+function NewInvoiceForm({ contacts, onSave }: { contacts: any[]; onSave: (p: any) => void }) {
+  const [formData, setFormData] = useState({
+    customer: "",
+    customerName: "",
+    issued: new Date().toISOString().split('T')[0],
+    due: new Date(Date.now() + 7*24*60*60*1000).toISOString().split('T')[0],
+    amount: "",
+    notes: ""
+  });
+
   return (
-    <div className="space-y-5">
+    <form id="new-invoice-form" className="space-y-5" onSubmit={(e) => { 
+      e.preventDefault(); 
+      let finalCust = formData.customer;
+      let finalCustName = formData.customerName;
+      const matched = contacts.find(c => c.name === formData.customerName);
+      if (matched) {
+        finalCust = matched.id;
+        finalCustName = "";
+      }
+      onSave({
+        ...formData, 
+        customer: finalCust || null,
+        customerName: finalCustName,
+        no: "INV-" + Math.random().toString(36).toUpperCase().slice(2,8)
+      }); 
+    }}>
       <div className="grid grid-cols-2 gap-4">
-        <Field label="Customer"><input className="input" placeholder="Select or create customer" /></Field>
-        <Field label="Customer ID"><input className="input" placeholder="Auto-generated" disabled /></Field>
-        <Field label="Issue date"><input type="date" className="input" defaultValue="2026-05-04" /></Field>
-        <Field label="Due date"><input type="date" className="input" defaultValue="2026-05-11" /></Field>
+        <Field label="Customer">
+          <input 
+            list="invoice-customer-list"
+            className="input" 
+            placeholder="Type name or select customer..."
+            required
+            value={formData.customerName}
+            onChange={(e) => {
+              const val = e.target.value;
+              const matched = contacts.find(c => c.name === val);
+              setFormData({
+                ...formData, 
+                customerName: val,
+                customer: matched ? matched.id : ""
+              });
+            }}
+          />
+          <datalist id="invoice-customer-list">
+            {contacts.map(c => <option key={c.id} value={c.name}>{c.location}</option>)}
+          </datalist>
+        </Field>
+        <Field label="Amount">
+          <input className="input" type="number" required placeholder="0.00" value={formData.amount} onChange={(e) => setFormData({...formData, amount: e.target.value})} />
+        </Field>
+        <Field label="Issue date"><input type="date" className="input" value={formData.issued} onChange={(e) => setFormData({...formData, issued: e.target.value})} /></Field>
+        <Field label="Due date"><input type="date" className="input" value={formData.due} onChange={(e) => setFormData({...formData, due: e.target.value})} /></Field>
       </div>
-
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-[11px] uppercase tracking-[0.14em] text-ink-muted">Line items</span>
-          <button onClick={() => setLines([...lines, { desc: "", weight: "", karat: "24", price: "" }])} className="text-xs text-gold-700 hover:underline">+ Add line</button>
-        </div>
-        <div className="space-y-2">
-          {lines.map((_, idx) => (
-            <div key={idx} className="grid grid-cols-12 gap-2">
-              <input className="input col-span-5" placeholder="Description" />
-              <input className="input col-span-2" placeholder="Weight (g)" />
-              <select className="input col-span-2"><option>24K</option><option>22K</option><option>18K</option></select>
-              <input className="input col-span-2" placeholder="Unit price" />
-              <button onClick={() => setLines(lines.filter((_, i) => i !== idx))} className="btn-ghost col-span-1 justify-center">
-                <i className="ri-delete-bin-line" />
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <Field label="Notes / payment terms"><textarea rows={2} className="input" /></Field>
-    </div>
+      <Field label="Notes / payment terms" full><textarea rows={2} className="input" value={formData.notes} onChange={(e) => setFormData({...formData, notes: e.target.value})} /></Field>
+    </form>
   );
 }
 
@@ -312,5 +377,18 @@ function Field({ label, children, full }: { label: string; children: React.React
       <div className="text-[11px] uppercase tracking-[0.14em] text-ink-muted mb-1.5">{label}</div>
       {children}
     </label>
+  );
+}
+
+function Stat({ label, value, hint, icon, tone = "ink" }: { label: string; value: string; hint: string; icon: string; tone?: "ink" | "rose" | "sage" }) {
+  return (
+    <div className="surface p-5">
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-[11px] uppercase tracking-[0.14em] text-ink-muted">{label}</div>
+        <i className={`${icon} text-gold-600 text-base opacity-70`} />
+      </div>
+      <div className={`font-numeric text-[30px] leading-none ${tone === "rose" ? "text-rose-700" : tone === "sage" ? "text-sage-700" : "text-ink"}`}>{value}</div>
+      <div className="text-xs text-ink-muted mt-2">{hint}</div>
+    </div>
   );
 }

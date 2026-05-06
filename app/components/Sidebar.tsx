@@ -3,6 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useRole } from "../lib/role-context";
 import { useAuth } from "../lib/auth-context";
+import logo from "../asset/logo.jpeg";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: "ri-layout-grid-line", admin: false },
@@ -25,10 +26,9 @@ export function Sidebar() {
       <div className="px-2 mb-8">
         <div className="flex items-center gap-3">
           <div
-            className="w-10 h-10 rounded-lg flex items-center justify-center"
-            style={{ background: "#b8893d" }}
+            className="w-10 h-10 rounded-lg flex items-center justify-center overflow-hidden border border-line"
           >
-            <i className="ri-coin-line text-white text-xl" />
+            <img src={logo.src} alt="Logo" className="w-full h-full object-cover" />
           </div>
           <div>
             <div className="font-display text-[17px] leading-tight text-ink">

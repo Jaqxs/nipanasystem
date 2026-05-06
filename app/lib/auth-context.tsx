@@ -1,10 +1,14 @@
 "use client";
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 
+import api from "./api";
+
 interface AuthUser {
+  id: string;
   name: string;
   email: string;
   role: "admin" | "sales_ops";
+  token: string;
 }
 
 interface AuthCtx {
@@ -18,11 +22,6 @@ interface AuthCtx {
 const Ctx = createContext<AuthCtx | null>(null);
 const STORAGE_KEY = "gbms.auth.user";
 
-const DEMO_USERS: Record<string, { name: string; password: string; role: "admin" | "sales_ops" }> = {
-  "j.assey@nipana.tz": { name: "Julius Assey", password: "demo", role: "admin" },
-  "m.rwey@nipana.tz": { name: "Maria Rweyemamu", password: "demo", role: "sales_ops" },
-};
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [ready, setReady] = useState(false);
@@ -30,26 +29,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setUser(JSON.parse(raw));
-    } catch {}
+      if (raw) {
+        const u = JSON.parse(raw);
+        if (u && u.token) {
+          setUser(u);
+        } else {
+          console.warn("[Auth] Stale or invalid session found, clearing...");
+          localStorage.removeItem(STORAGE_KEY);
+        }
+      }
+    } catch (err) {
+      console.error("[Auth] Error restoring session", err);
+    }
     setReady(true);
   }, []);
 
   const login = async (email: string, password: string) => {
-    await new Promise((r) => setTimeout(r, 400));
-    const record = DEMO_USERS[email.trim().toLowerCase()];
-    if (!record) return { ok: false, error: "No account found for that email." };
-    if (record.password !== password) return { ok: false, error: "Incorrect password." };
-    const u: AuthUser = { name: record.name, email: email.trim().toLowerCase(), role: record.role };
-    setUser(u);
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(u)); } catch {}
-    return { ok: true };
+    try {
+      const { data } = await api.post("/auth/login", { email, password });
+      const u: AuthUser = {
+        id: data._id,
+        name: data.name,
+        email: data.email,
+        role: data.role,
+        token: data.token
+      };
+      setUser(u);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
+      return { ok: true };
+    } catch (err: any) {
+      return { 
+        ok: false, 
+        error: err.response?.data?.message || "Login failed. Check your connection." 
+      };
+    }
   };
 
   const logout = () => {
     setUser(null);
-    try { localStorage.removeItem(STORAGE_KEY); } catch {}
+    localStorage.removeItem(STORAGE_KEY);
   };
+
 
   return (
     <Ctx.Provider value={{ user, isAuthenticated: !!user, ready, login, logout }}>

@@ -1,46 +1,125 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PageHeader } from "../components/PageHeader";
 import { Badge } from "../components/Badge";
 import { Modal } from "../components/Modal";
 import { RowActionsMenu } from "../components/RowActionsMenu";
 import { ExportModal } from "../components/ExportModal";
-import { CUSTOMERS, SUPPLIERS, Customer, Supplier, fmtWeight } from "../lib/mockData";
+import api from "../lib/api";
 import { useCurrency } from "../lib/currency-context";
+import { fmtWeight } from "../lib/mockData";
 
 type Tab = "customers" | "suppliers";
+
+interface Contact {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  location: string;
+  type: "customer" | "supplier";
+  status: "active" | "inactive";
+  totalValue: number;
+  outstanding: number;
+  notes: string;
+  joined: string;
+  lastTx: string;
+}
 
 export default function ContactsPage() {
   const [tab, setTab] = useState<Tab>("customers");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [creating, setCreating] = useState(false);
-  const [editing, setEditing] = useState<Customer | Supplier | null>(null);
-  const [detail, setDetail] = useState<Customer | Supplier | null>(null);
+  const [editing, setEditing] = useState<Contact | null>(null);
+  const [detail, setDetail] = useState<Contact | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const [allContacts, setAllContacts] = useState<Contact[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
   const { format } = useCurrency();
 
-  const customers = CUSTOMERS
+  useEffect(() => {
+    fetchContacts();
+  }, []);
+
+  const fetchContacts = async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get("/contacts");
+      setAllContacts(data);
+    } catch (err) {
+      console.error("Failed to fetch contacts", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async (payload: any) => {
+    setBusy(true);
+    try {
+      if (editing) {
+        await api.put(`/contacts/${editing.id}`, payload);
+      } else {
+        await api.post("/contacts", { ...payload, type: tab === "customers" ? "customer" : "supplier" });
+      }
+      setCreating(false);
+      setEditing(null);
+      fetchContacts();
+    } catch (err) {
+      alert("Failed to save contact. " + (err as any).response?.data?.message || "");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this contact?")) return;
+    try {
+      await api.delete(`/contacts/${id}`);
+      fetchContacts();
+    } catch (err) {
+      alert("Failed to delete contact. Only admins can delete.");
+    }
+  };
+
+  const toggleStatus = async (contact: Contact) => {
+    try {
+      await api.put(`/contacts/${contact.id}`, { status: contact.status === "active" ? "inactive" : "active" });
+      fetchContacts();
+    } catch (err) {
+      alert("Failed to update status.");
+    }
+  };
+
+  const customers = allContacts
+    .filter((c) => c.type === "customer")
     .filter((c) => statusFilter === "All" || c.status === statusFilter.toLowerCase())
     .filter((c) => !search ||
       c.name.toLowerCase().includes(search.toLowerCase()) ||
       c.id.toLowerCase().includes(search.toLowerCase()) ||
-      c.email.toLowerCase().includes(search.toLowerCase()));
+      (c.email && c.email.toLowerCase().includes(search.toLowerCase())));
 
-  const suppliers = SUPPLIERS
-    .filter((s) => statusFilter === "All" || s.status === statusFilter.toLowerCase())
-    .filter((s) => !search ||
-      s.name.toLowerCase().includes(search.toLowerCase()) ||
-      s.id.toLowerCase().includes(search.toLowerCase()) ||
-      s.email.toLowerCase().includes(search.toLowerCase()));
+  const suppliers = allContacts
+    .filter((c) => c.type === "supplier")
+    .filter((c) => statusFilter === "All" || c.status === statusFilter.toLowerCase())
+    .filter((c) => !search ||
+      c.name.toLowerCase().includes(search.toLowerCase()) ||
+      c.id.toLowerCase().includes(search.toLowerCase()) ||
+      (c.email && c.email.toLowerCase().includes(search.toLowerCase())));
 
-  const totalReceivable = CUSTOMERS.reduce((a, b) => a + b.outstanding, 0);
-  const totalPayable = SUPPLIERS.reduce((a, b) => a + b.outstanding, 0);
-  const totalCustomerSpend = CUSTOMERS.reduce((a, b) => a + b.totalPurchases, 0);
-  const totalSupplied_g = SUPPLIERS.reduce((a, b) => a + b.totalSupplied_g, 0);
+  const totalReceivable = allContacts.filter(c => c.type === "customer").reduce((a, b) => a + Number(b.outstanding), 0);
+  const totalPayable = allContacts.filter(c => c.type === "supplier").reduce((a, b) => a + Number(b.outstanding), 0);
+  const totalCustomerSpend = allContacts.filter(c => c.type === "customer").reduce((a, b) => a + Number(b.totalValue), 0);
+  const totalSupplied_g = allContacts.filter(c => c.type === "supplier").reduce((a, b) => a + Number(b.totalValue), 0);
 
   const filteredCount = tab === "customers" ? customers.length : suppliers.length;
   const resourceLabel = tab === "customers" ? "customers" : "suppliers";
+
+  const numCust = allContacts.filter(c => c.type === "customer").length;
+  const numSupp = allContacts.filter(c => c.type === "supplier").length;
+  const activeCust = allContacts.filter(c => c.type === "customer" && c.status === "active").length;
+  const activeSupp = allContacts.filter(c => c.type === "supplier" && c.status === "active").length;
 
   return (
     <div>
@@ -59,15 +138,13 @@ export default function ContactsPage() {
         }
       />
 
-      {/* Top metrics */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <Stat label="Customers" value={CUSTOMERS.length.toString()} hint={`${CUSTOMERS.filter(c => c.status === "active").length} active`} icon="ri-user-3-line" />
-        <Stat label="Suppliers" value={SUPPLIERS.length.toString()} hint={`${SUPPLIERS.filter(s => s.status === "active").length} active`} icon="ri-truck-line" />
+        <Stat label="Customers" value={numCust.toString()} hint={`${activeCust} active`} icon="ri-user-3-line" />
+        <Stat label="Suppliers" value={numSupp.toString()} hint={`${activeSupp} active`} icon="ri-truck-line" />
         <Stat label="Customer receivable" value={format(totalReceivable)} hint="outstanding balance" icon="ri-arrow-right-down-line" tone="rose" />
         <Stat label="Supplier payable" value={format(totalPayable)} hint="awaiting payment" icon="ri-arrow-right-up-line" tone="rose" />
       </div>
 
-      {/* Tabs + filters */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <div className="surface-flat p-1 inline-flex gap-1">
           <button
@@ -75,14 +152,14 @@ export default function ContactsPage() {
             className={`px-4 py-1.5 rounded-md text-sm transition ${tab === "customers" ? "bg-gold-100 text-gold-700" : "text-ink-muted hover:bg-paper-100"}`}
           >
             <i className="ri-user-3-line mr-1.5" />
-            Customers <span className="text-ink-faint ml-1">({CUSTOMERS.length})</span>
+            Customers <span className="text-ink-faint ml-1">({numCust})</span>
           </button>
           <button
             onClick={() => setTab("suppliers")}
             className={`px-4 py-1.5 rounded-md text-sm transition ${tab === "suppliers" ? "bg-gold-100 text-gold-700" : "text-ink-muted hover:bg-paper-100"}`}
           >
             <i className="ri-truck-line mr-1.5" />
-            Suppliers <span className="text-ink-faint ml-1">({SUPPLIERS.length})</span>
+            Suppliers <span className="text-ink-faint ml-1">({numSupp})</span>
           </button>
         </div>
 
@@ -105,8 +182,12 @@ export default function ContactsPage() {
         </div>
       </div>
 
-      {/* Customers table */}
-      {tab === "customers" && (
+      {loading ? (
+        <div className="surface p-20 flex flex-col items-center justify-center text-ink-faint">
+           <i className="ri-loader-4-line animate-spin text-3xl mb-2" />
+           Loading contacts...
+        </div>
+      ) : tab === "customers" ? (
         <div className="surface">
           <table className="ledger">
             <thead>
@@ -114,7 +195,7 @@ export default function ContactsPage() {
                 <th>ID</th><th>Name</th><th>Contact</th><th>Location</th>
                 <th className="text-right">Total purchases</th>
                 <th className="text-right">Outstanding</th>
-                <th>Status</th><th>Last tx</th><th />
+                <th>Status</th><th>Joined</th><th />
               </tr>
             </thead>
             <tbody>
@@ -122,30 +203,26 @@ export default function ContactsPage() {
                 <tr><td colSpan={9} className="text-center text-ink-faint py-12">No customers match your filters.</td></tr>
               ) : customers.map((c) => (
                 <tr key={c.id} className="clickable" onClick={() => setDetail(c)}>
-                  <td className="font-numeric text-ink">{c.id}</td>
+                  <td className="font-numeric text-ink">{c.id.slice(0, 8)}...</td>
                   <td className="text-ink font-medium">{c.name}</td>
                   <td className="text-ink-muted">
                     <div className="text-sm">{c.email}</div>
                     <div className="text-xs">{c.phone}</div>
                   </td>
                   <td className="text-ink-muted">{c.location}</td>
-                  <td className="text-right font-numeric text-ink">{format(c.totalPurchases)}</td>
-                  <td className={`text-right font-numeric ${c.outstanding > 0 ? "text-rose-700" : "text-ink-faint"}`}>
-                    {c.outstanding > 0 ? format(c.outstanding) : "—"}
+                  <td className="text-right font-numeric text-ink">{format(Number(c.totalValue))}</td>
+                  <td className={`text-right font-numeric ${Number(c.outstanding) > 0 ? "text-rose-700" : "text-ink-faint"}`}>
+                    {Number(c.outstanding) > 0 ? format(Number(c.outstanding)) : "—"}
                   </td>
                   <td><Badge tone={c.status === "active" ? "sage" : "terracotta"} dot>{c.status}</Badge></td>
-                  <td className="text-ink-muted">{c.lastTx}</td>
+                  <td className="text-ink-muted">{new Date(c.joined).toLocaleDateString()}</td>
                   <td className="text-right" onClick={(e) => e.stopPropagation()}>
                     <RowActionsMenu actions={[
                       { label: "View detail", icon: "ri-eye-line", onClick: () => setDetail(c) },
                       { label: "Edit", icon: "ri-edit-line", onClick: () => setEditing(c) },
                       { label: "Send invoice", icon: "ri-file-paper-2-line", onClick: () => alert(`New invoice for ${c.name}`) },
-                      { label: "Send statement", icon: "ri-mail-send-line", onClick: () => alert("Statement sent") },
-                      ...(c.outstanding > 0 ? [
-                        { label: "Send reminder", icon: "ri-notification-line", onClick: () => alert("Reminder sent") },
-                      ] : []),
-                      { label: c.status === "active" ? "Deactivate" : "Activate", icon: c.status === "active" ? "ri-pause-line" : "ri-play-line", onClick: () => alert("Status toggled"), divider: true },
-                      { label: "Delete", icon: "ri-delete-bin-line", onClick: () => alert("Delete"), danger: true, divider: true },
+                      { label: c.status === "active" ? "Deactivate" : "Activate", icon: c.status === "active" ? "ri-pause-line" : "ri-play-line", onClick: () => toggleStatus(c), divider: true },
+                      { label: "Delete", icon: "ri-delete-bin-line", onClick: () => handleDelete(c.id), danger: true, divider: true },
                     ]} />
                   </td>
                 </tr>
@@ -153,10 +230,7 @@ export default function ContactsPage() {
             </tbody>
           </table>
         </div>
-      )}
-
-      {/* Suppliers table */}
-      {tab === "suppliers" && (
+      ) : (
         <div className="surface">
           <table className="ledger">
             <thead>
@@ -164,7 +238,7 @@ export default function ContactsPage() {
                 <th>ID</th><th>Name</th><th>Contact</th><th>Location</th>
                 <th className="text-right">Total supplied</th>
                 <th className="text-right">Outstanding</th>
-                <th>Status</th><th>Last delivery</th><th />
+                <th>Status</th><th>Joined</th><th />
               </tr>
             </thead>
             <tbody>
@@ -172,27 +246,26 @@ export default function ContactsPage() {
                 <tr><td colSpan={9} className="text-center text-ink-faint py-12">No suppliers match your filters.</td></tr>
               ) : suppliers.map((s) => (
                 <tr key={s.id} className="clickable" onClick={() => setDetail(s)}>
-                  <td className="font-numeric text-ink">{s.id}</td>
+                  <td className="font-numeric text-ink">{s.id.slice(0, 8)}...</td>
                   <td className="text-ink font-medium">{s.name}</td>
                   <td className="text-ink-muted">
                     <div className="text-sm">{s.email}</div>
-                    <div className="text-xs">{s.contact}</div>
+                    <div className="text-xs">{s.phone}</div>
                   </td>
                   <td className="text-ink-muted">{s.location}</td>
-                  <td className="text-right font-numeric text-ink">{fmtWeight(s.totalSupplied_g)}</td>
-                  <td className={`text-right font-numeric ${s.outstanding > 0 ? "text-rose-700" : "text-ink-faint"}`}>
-                    {s.outstanding > 0 ? format(s.outstanding) : "—"}
+                  <td className="text-right font-numeric text-ink">{fmtWeight(Number(s.totalValue))}</td>
+                  <td className={`text-right font-numeric ${Number(s.outstanding) > 0 ? "text-rose-700" : "text-ink-faint"}`}>
+                    {Number(s.outstanding) > 0 ? format(Number(s.outstanding)) : "—"}
                   </td>
                   <td><Badge tone={s.status === "active" ? "sage" : "terracotta"} dot>{s.status}</Badge></td>
-                  <td className="text-ink-muted">{s.lastDelivery}</td>
+                  <td className="text-ink-muted">{new Date(s.joined).toLocaleDateString()}</td>
                   <td className="text-right" onClick={(e) => e.stopPropagation()}>
                     <RowActionsMenu actions={[
                       { label: "View detail", icon: "ri-eye-line", onClick: () => setDetail(s) },
                       { label: "Edit", icon: "ri-edit-line", onClick: () => setEditing(s) },
                       { label: "Record purchase", icon: "ri-arrow-down-circle-line", onClick: () => alert(`New purchase from ${s.name}`) },
-                      { label: "Record payment", icon: "ri-money-dollar-circle-line", onClick: () => alert("Payment recorded") },
-                      { label: s.status === "active" ? "Deactivate" : "Activate", icon: s.status === "active" ? "ri-pause-line" : "ri-play-line", onClick: () => alert("Status toggled"), divider: true },
-                      { label: "Delete", icon: "ri-delete-bin-line", onClick: () => alert("Delete"), danger: true, divider: true },
+                      { label: s.status === "active" ? "Deactivate" : "Activate", icon: s.status === "active" ? "ri-pause-line" : "ri-play-line", onClick: () => toggleStatus(s), divider: true },
+                      { label: "Delete", icon: "ri-delete-bin-line", onClick: () => handleDelete(s.id), danger: true, divider: true },
                     ]} />
                   </td>
                 </tr>
@@ -202,7 +275,6 @@ export default function ContactsPage() {
         </div>
       )}
 
-      {/* Aggregates footer */}
       <div className="mt-5 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
         <div className="surface-flat p-3">
           <div className="text-[10px] uppercase tracking-[0.14em] text-ink-muted">Customer lifetime value</div>
@@ -214,43 +286,27 @@ export default function ContactsPage() {
         </div>
         <div className="surface-flat p-3">
           <div className="text-[10px] uppercase tracking-[0.14em] text-ink-muted">Avg customer spend</div>
-          <div className="font-numeric text-ink mt-0.5">{format(totalCustomerSpend / CUSTOMERS.length)}</div>
+          <div className="font-numeric text-ink mt-0.5">{format(numCust ? totalCustomerSpend / numCust : 0)}</div>
         </div>
         <div className="surface-flat p-3">
           <div className="text-[10px] uppercase tracking-[0.14em] text-ink-muted">Avg supplier delivery</div>
-          <div className="font-numeric text-ink mt-0.5">{fmtWeight(totalSupplied_g / SUPPLIERS.length)}</div>
+          <div className="font-numeric text-ink mt-0.5">{fmtWeight(numSupp ? totalSupplied_g / numSupp : 0)}</div>
         </div>
       </div>
 
-      {/* Detail modal */}
-      <ContactDetailModal contact={detail} onClose={() => setDetail(null)} format={format} />
+      <ContactDetailModal contact={detail} onClose={() => setDetail(null)} format={format} onEdit={(c) => { setDetail(null); setEditing(c); }} />
 
-      {/* Create modal */}
-      <Modal open={creating} onClose={() => setCreating(false)} size="lg"
-        eyebrow={tab === "customers" ? "New customer (buyer)" : "New supplier (seller)"}
-        title={`Register a ${tab === "customers" ? "buyer" : "seller"}`}
+      <Modal open={creating || !!editing} onClose={() => { setCreating(false); setEditing(null); }} size="lg"
+        eyebrow={editing ? (editing.type === "customer" ? "Edit customer" : "Edit supplier") : (tab === "customers" ? "New customer (buyer)" : "New supplier (seller)")}
+        title={editing ? editing.name : `Register a ${tab === "customers" ? "buyer" : "seller"}`}
         footer={<>
-          <button className="btn-secondary" onClick={() => setCreating(false)}>Cancel</button>
-          <button className="btn-primary" onClick={() => setCreating(false)}>
-            <i className="ri-check-line" /> Save & assign ID
+          <button className="btn-secondary" onClick={() => { setCreating(false); setEditing(null); }}>Cancel</button>
+          <button className="btn-primary" form="contact-form" disabled={busy}>
+            {busy ? <i className="ri-loader-4-line animate-spin" /> : <i className="ri-check-line" />}
+            {editing ? "Save changes" : "Save & assign ID"}
           </button>
         </>}>
-        <p className="text-xs text-ink-muted mb-4">
-          A unique ID will be auto-generated:
-          <span className="font-numeric text-ink-soft ml-1">{tab === "customers" ? "CUST-2026-NNNNNN" : "SUPP-2026-NNNNNN"}</span>
-        </p>
-        <ContactForm kind={tab} />
-      </Modal>
-
-      {/* Edit modal */}
-      <Modal open={!!editing} onClose={() => setEditing(null)} size="lg"
-        eyebrow={editing && "id" in editing && editing.id.startsWith("CUST") ? "Edit customer" : "Edit supplier"}
-        title={editing?.name}
-        footer={<>
-          <button className="btn-secondary" onClick={() => setEditing(null)}>Cancel</button>
-          <button className="btn-primary" onClick={() => setEditing(null)}>Save changes</button>
-        </>}>
-        {editing && <ContactForm kind={"totalPurchases" in editing ? "customers" : "suppliers"} initial={editing} />}
+        <ContactForm kind={editing ? (editing.type === "customer" ? "customers" : "suppliers") : tab} initial={editing || undefined} onSave={handleSave} />
       </Modal>
 
       <ExportModal open={exportOpen} onClose={() => setExportOpen(false)} resource={resourceLabel} rowCount={filteredCount} />
@@ -259,10 +315,10 @@ export default function ContactsPage() {
 }
 
 function ContactDetailModal({
-  contact, onClose, format,
-}: { contact: Customer | Supplier | null; onClose: () => void; format: (n: number) => string }) {
+  contact, onClose, format, onEdit
+}: { contact: Contact | null; onClose: () => void; format: (n: number) => string; onEdit: (c: Contact) => void }) {
   if (!contact) return null;
-  const isCustomer = "totalPurchases" in contact;
+  const isCustomer = contact.type === "customer";
   const tint = isCustomer ? "#7a8c6b" : "#b8893d";
 
   return (
@@ -271,14 +327,13 @@ function ContactDetailModal({
       title={contact.name}
       footer={<>
         <button className="btn-secondary" onClick={onClose}>Close</button>
-        <button className="btn-secondary"><i className="ri-edit-line" />Edit</button>
+        <button className="btn-secondary" onClick={() => onEdit(contact)}><i className="ri-edit-line" />Edit</button>
         {isCustomer ? (
           <button className="btn-primary"><i className="ri-file-paper-2-line" />Create invoice</button>
         ) : (
           <button className="btn-primary"><i className="ri-arrow-down-circle-line" />Record purchase</button>
         )}
       </>}>
-      {/* Hero */}
       <div className="surface-flat p-5 mb-5"
         style={{ background: `linear-gradient(180deg, ${tint}0d 0%, transparent 100%)`, borderColor: `${tint}33` }}>
         <div className="flex items-start gap-4">
@@ -288,7 +343,7 @@ function ContactDetailModal({
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-1">
-              <span className="font-numeric text-sm text-ink-soft">{contact.id}</span>
+              <span className="font-numeric text-sm text-ink-soft">{contact.id.slice(0,8)}...</span>
               <Badge tone={contact.status === "active" ? "sage" : "terracotta"} dot>{contact.status}</Badge>
             </div>
             <div className="text-base font-medium text-ink">{contact.name}</div>
@@ -300,11 +355,11 @@ function ContactDetailModal({
             </div>
             <div className="font-numeric text-2xl text-ink leading-none mt-1">
               {isCustomer
-                ? format((contact as Customer).totalPurchases)
-                : fmtWeight((contact as Supplier).totalSupplied_g)}
+                ? format(Number(contact.totalValue))
+                : fmtWeight(Number(contact.totalValue))}
             </div>
-            {(contact.outstanding > 0) && (
-              <div className="text-[11px] text-rose-700 mt-1">{format(contact.outstanding)} outstanding</div>
+            {(Number(contact.outstanding) > 0) && (
+              <div className="text-[11px] text-rose-700 mt-1">{format(Number(contact.outstanding))} outstanding</div>
             )}
           </div>
         </div>
@@ -313,125 +368,75 @@ function ContactDetailModal({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <Section title="Contact">
           <dl className="grid grid-cols-2 gap-x-5 gap-y-3 text-sm">
-            <Row label="Email" value={isCustomer ? (contact as Customer).email : (contact as Supplier).email} />
-            <Row label="Phone" value={isCustomer ? (contact as Customer).phone : (contact as Supplier).contact} />
+            <Row label="Email" value={contact.email} />
+            <Row label="Phone" value={contact.phone} />
             <Row label="Location" value={contact.location} />
-            <Row label="Joined" value={isCustomer ? (contact as Customer).joined : (contact as Supplier).joined} />
-            <Row label={isCustomer ? "Last transaction" : "Last delivery"} value={isCustomer ? (contact as Customer).lastTx : (contact as Supplier).lastDelivery} />
+            <Row label="Joined" value={new Date(contact.joined).toLocaleDateString()} />
             <Row label="Status" value={<Badge tone={contact.status === "active" ? "sage" : "terracotta"} dot>{contact.status}</Badge>} />
           </dl>
         </Section>
 
         <Section title="Activity summary">
           <dl className="grid grid-cols-2 gap-x-5 gap-y-3 text-sm">
-            {isCustomer ? (
-              <>
-                <Row label="Total purchases" value={format((contact as Customer).totalPurchases)} mono />
-                <Row label="Outstanding" value={format(contact.outstanding)} mono valueClass={contact.outstanding > 0 ? "text-rose-700" : "text-ink-faint"} />
-                <Row label="Customer rank" value="#1 of 8" />
-                <Row label="Avg invoice" value={format((contact as Customer).totalPurchases / 12)} mono />
-              </>
-            ) : (
-              <>
-                <Row label="Gold supplied" value={fmtWeight((contact as Supplier).totalSupplied_g)} mono />
-                <Row label="Total paid" value={format((contact as Supplier).totalPaid)} mono />
-                <Row label="Outstanding" value={format(contact.outstanding)} mono valueClass={contact.outstanding > 0 ? "text-rose-700" : "text-ink-faint"} />
-                <Row label="Supplier rank" value="#2 of 6" />
-              </>
-            )}
+            <Row label={isCustomer ? "Total purchases" : "Gold supplied"} value={isCustomer ? format(Number(contact.totalValue)) : fmtWeight(Number(contact.totalValue))} mono />
+            <Row label="Outstanding" value={format(Number(contact.outstanding))} mono valueClass={Number(contact.outstanding) > 0 ? "text-rose-700" : "text-ink-faint"} />
           </dl>
         </Section>
       </div>
 
       <div className="mt-5">
-        <div className="text-[11px] uppercase tracking-[0.14em] text-ink-muted mb-2">Recent {isCustomer ? "invoices" : "deliveries"}</div>
-        <div className="surface-flat overflow-hidden">
-          <table className="ledger">
-            <thead>
-              <tr>
-                <th>{isCustomer ? "Invoice" : "Reference"}</th>
-                <th>Date</th>
-                <th>{isCustomer ? "Items" : "Weight"}</th>
-                <th className="text-right">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(isCustomer ? [
-                { ref: "INV-2026-000482", date: "May 04", q: "240.5g · 24K", a: 18_400 },
-                { ref: "INV-2026-000473", date: "Apr 29", q: "190g · 22K", a: 14_900 },
-                { ref: "INV-2026-000465", date: "Apr 23", q: "20g · 24K", a: 1_540 },
-              ] : [
-                { ref: "TX-018340", date: "May 04", q: "1240.5g · Raw", a: 22_800 },
-                { ref: "TX-018289", date: "Apr 18", q: "880g · Raw", a: 15_700 },
-                { ref: "TX-018254", date: "Apr 02", q: "640g · 22K", a: 11_400 },
-              ]).map((r, i) => (
-                <tr key={i}>
-                  <td className="font-numeric text-ink">{r.ref}</td>
-                  <td className="text-ink-muted">{r.date}</td>
-                  <td className="text-ink-soft">{r.q}</td>
-                  <td className="text-right font-numeric text-ink">{format(r.a)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="text-[11px] uppercase tracking-[0.14em] text-ink-muted mb-2">Recent activity</div>
+        <div className="surface-flat p-8 text-center text-ink-faint text-sm">
+           No transactions recorded for this contact yet.
         </div>
       </div>
     </Modal>
   );
 }
 
-function ContactForm({ kind, initial }: { kind: Tab; initial?: Customer | Supplier }) {
+function ContactForm({ kind, initial, onSave }: { kind: Tab; initial?: Contact; onSave: (p: any) => void }) {
   const isCustomer = kind === "customers";
+  const [formData, setFormData] = useState({
+    name: initial?.name || "",
+    email: initial?.email || "",
+    phone: initial?.phone || "",
+    location: initial?.location || "",
+    status: initial?.status || "active",
+    notes: initial?.notes || "",
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSave(formData);
+  };
+
   return (
-    <div className="grid grid-cols-2 gap-4">
+    <form id="contact-form" onSubmit={handleSubmit} className="grid grid-cols-2 gap-4">
       <Field label={`${isCustomer ? "Customer" : "Supplier"} ID`}>
-        <input className="input" placeholder={isCustomer ? "Auto-generated CUST-2026-NNNNNN" : "Auto-generated SUPP-2026-NNNNNN"} disabled defaultValue={initial?.id} />
+        <input className="input" placeholder="Auto-generated" disabled defaultValue={initial?.id} />
       </Field>
       <Field label="Status">
-        <select className="input" defaultValue={initial?.status || "active"}>
+        <select className="input" value={formData.status} onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}>
           <option value="active">Active</option>
           <option value="inactive">Inactive</option>
         </select>
       </Field>
       <Field label={isCustomer ? "Customer / business name" : "Supplier / cooperative name"} full>
-        <input className="input" placeholder="Mwanza Refinery Ltd." defaultValue={initial?.name} />
+        <input className="input" required placeholder="Name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
       </Field>
       <Field label="Email">
-        <input className="input" type="email" placeholder="contact@example.tz" defaultValue={isCustomer ? (initial as Customer)?.email : (initial as Supplier)?.email} />
+        <input className="input" type="email" placeholder="contact@example.tz" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
       </Field>
       <Field label="Phone">
-        <input className="input" placeholder="+255 ..." defaultValue={isCustomer ? (initial as Customer)?.phone : (initial as Supplier)?.contact} />
+        <input className="input" placeholder="+255 ..." value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
       </Field>
       <Field label="Location" full>
-        <input className="input" placeholder="Region · City" defaultValue={initial?.location} />
+        <input className="input" placeholder="Region · City" value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value })} />
       </Field>
-      {isCustomer ? (
-        <>
-          <Field label="Tax / TIN">
-            <input className="input" placeholder="109-204-883" />
-          </Field>
-          <Field label="Payment terms">
-            <select className="input">
-              <option>Net 7</option><option>Net 14</option><option>Net 30</option><option>On receipt</option>
-            </select>
-          </Field>
-        </>
-      ) : (
-        <>
-          <Field label="License number">
-            <input className="input" placeholder="ML-XXXXX-2024" />
-          </Field>
-          <Field label="Default purity">
-            <select className="input">
-              <option>Raw</option><option>24K</option><option>22K</option><option>18K</option>
-            </select>
-          </Field>
-        </>
-      )}
       <Field label="Notes" full>
-        <textarea rows={2} className="input" placeholder="Optional internal notes" />
+        <textarea rows={2} className="input" placeholder="Optional internal notes" value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} />
       </Field>
-    </div>
+    </form>
   );
 }
 

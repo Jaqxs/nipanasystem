@@ -9,17 +9,17 @@ import { ANOMALIES } from "../lib/mockData";
 type Anomaly = typeof ANOMALIES[number];
 
 const HERO_METRICS = [
-  { label: "Sales recorded", value: "$28,050", tone: "ink" },
-  { label: "Expenses logged", value: "$24,640", tone: "rose" },
-  { label: "Stock added", value: "1.24 kg", tone: "ink" },
-  { label: "Items flagged", value: "3", tone: "amber" },
+  { label: "Sales recorded", value: "$0", tone: "ink" },
+  { label: "Expenses logged", value: "$0", tone: "rose" },
+  { label: "Stock added", value: "0 kg", tone: "ink" },
+  { label: "Items flagged", value: "0", tone: "amber" },
 ];
 
 const MODEL_CARDS = [
-  { label: "Anomalies flagged", value: "12", hint: "this month", icon: "ri-radar-line", tone: "rose" },
-  { label: "Auto-categorisation accuracy", value: "94.2%", hint: "rolling 30-day", icon: "ri-target-line", tone: "sage" },
-  { label: "Predictions accepted", value: "87%", hint: "by Admin", icon: "ri-check-double-line", tone: "sage" },
-  { label: "Average response", value: "1.8 s", hint: "advisor latency", icon: "ri-flashlight-line", tone: "ink" },
+  { label: "Anomalies flagged", value: "0", hint: "this month", icon: "ri-radar-line", tone: "rose" },
+  { label: "Auto-categorisation accuracy", value: "0%", hint: "rolling 30-day", icon: "ri-target-line", tone: "sage" },
+  { label: "Predictions accepted", value: "0%", hint: "by Admin", icon: "ri-check-double-line", tone: "sage" },
+  { label: "Average response", value: "0 s", hint: "advisor latency", icon: "ri-flashlight-line", tone: "ink" },
 ];
 
 const TONE_STYLE: Record<string, string> = {
@@ -29,13 +29,7 @@ const TONE_STYLE: Record<string, string> = {
   amber: "text-gold-700",
 };
 
-const CATEGORISATION = [
-  { tx: "TX-018339", desc: "Armoured transit Mwanza→DSM", suggested: "Logistics & Security", conf: 94, decision: "Accepted" },
-  { tx: "TX-018337", desc: "Refining batch 224", suggested: "Processing", conf: 88, decision: "Accepted" },
-  { tx: "TX-018334", desc: "Office rent — May", suggested: "Operational", conf: 71, decision: "Overridden → Rent" },
-  { tx: "TX-018332", desc: "Vault security — May", suggested: "Logistics & Security", conf: 96, decision: "Accepted" },
-  { tx: "TX-018330", desc: "Assay lab — quarterly", suggested: "Processing", conf: 82, decision: "Accepted" },
-];
+const CATEGORISATION: any[] = [];
 
 export default function AIInsightsPage() {
   const [anomaly, setAnomaly] = useState<Anomaly | null>(null);
@@ -68,10 +62,7 @@ export default function AIInsightsPage() {
           </div>
 
           <div className="text-[19px] leading-[1.55] text-ink max-w-4xl">
-            Yesterday recorded <span className="font-numeric text-gold-700 font-semibold">$28,050</span> in confirmed sales against
-            <span className="font-numeric text-rose-700"> $24,640</span> in expenses. Largest single transaction was a
-            <span className="text-ink font-semibold"> $22,800 purchase from Geita Cooperative</span> — flagged for review.
-            Inventory rose by <span className="text-ink font-semibold">1.24 kg</span>; <span className="text-rose-700">two invoices</span> remain overdue beyond seven days.
+            No activity recorded yesterday. Add transactions to see AI-generated summaries and insights here.
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
