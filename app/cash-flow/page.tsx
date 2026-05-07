@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PageHeader, FilterChip } from "../components/PageHeader";
 import { Modal } from "../components/Modal";
 import { RowActionsMenu } from "../components/RowActionsMenu";
@@ -7,6 +7,7 @@ import { ExportModal } from "../components/ExportModal";
 import { CashFlowWaterfall } from "../components/Charts";
 import { useCurrency } from "../lib/currency-context";
 import { useDateRange } from "../lib/date-range-context";
+import api from "../lib/api";
 
 interface Flow { date: string; type: "in" | "out"; category: string; desc: string; amount: number; }
 
