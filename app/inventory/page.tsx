@@ -35,6 +35,7 @@ export default function InventoryPage() {
   const [exportOpen, setExportOpen] = useState(false);
   const [allBatches, setAllBatches] = useState<Batch[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
+  const [goldPrice, setGoldPrice] = useState(GOLD_PRICE.current);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const { format, formatUSD } = useCurrency();
@@ -55,12 +56,16 @@ export default function InventoryPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [invRes, contactRes] = await Promise.all([
+      const [invRes, contactRes, settingsRes] = await Promise.all([
         api.get("/inventory"),
-        api.get("/contacts?type=supplier")
+        api.get("/contacts?type=supplier"),
+        api.get("/settings")
       ]);
       setAllBatches(invRes.data);
       setContacts(contactRes.data);
+      if (settingsRes.data?.goldPriceUSD) {
+        setGoldPrice(settingsRes.data.goldPriceUSD);
+      }
     } catch (err) {
       console.error("Failed to fetch inventory", err);
     } finally {
@@ -90,7 +95,7 @@ export default function InventoryPage() {
         batchNo: "BATCH-" + new Date().toISOString().slice(0,10).replace(/-/g,'') + "-" + Math.random().toString(36).slice(2,6).toUpperCase(),
         weight: Number(formData.weight),
         karat: formData.karat === "Raw" ? 0 : Number(formData.karat),
-        value: Number(formData.weight) * GOLD_PRICE.current
+        value: Number(formData.weight) * goldPrice
       };
       await api.post("/inventory", payload);
       setAdding(false);
@@ -163,7 +168,7 @@ export default function InventoryPage() {
         <div className="surface p-5" style={{ background: "#fdf6e4" }}>
           <div className="text-[11px] uppercase tracking-[0.14em] text-gold-700">Stock value</div>
           <div className="font-numeric text-[30px] text-ink mt-2">{format(totalValue)}</div>
-          <div className="text-xs text-gold-700 mt-2">@ {formatUSD(GOLD_PRICE.current)}/g (USD)</div>
+          <div className="text-xs text-gold-700 mt-2">@ {formatUSD(goldPrice)}/g (USD)</div>
         </div>
       </div>
 

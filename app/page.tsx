@@ -41,6 +41,7 @@ export default function Dashboard() {
     invoices: [] as any[],
     quotations: [] as any[]
   });
+  const [goldPrice, setGoldPrice] = useState(GOLD_PRICE.current);
 
   const [tx, setTx] = useState<any | null>(null);
   const [priceOpen, setPriceOpen] = useState(false);
@@ -54,11 +55,12 @@ export default function Dashboard() {
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      const [txRes, invRes, invcRes, quotRes] = await Promise.all([
+      const [txRes, invRes, invcRes, quotRes, settingsRes] = await Promise.all([
         api.get("/transactions"),
         api.get("/inventory"),
         api.get("/invoices"),
-        api.get("/quotations")
+        api.get("/quotations"),
+        api.get("/settings")
       ]);
       setData({
         transactions: txRes.data,
@@ -66,6 +68,9 @@ export default function Dashboard() {
         invoices: invcRes.data,
         quotations: quotRes.data
       });
+      if (settingsRes.data?.goldPriceUSD) {
+        setGoldPrice(settingsRes.data.goldPriceUSD);
+      }
     } catch (err) {
       console.error("Failed to fetch dashboard data", err);
     } finally {
@@ -111,7 +116,7 @@ export default function Dashboard() {
             <KpiCard label="Total Expenses" value={format(totalExpenses, { compact: true })} fullValue={format(totalExpenses)} delta={{ value: "Live", positive: false }} hint="from transactions" icon="ri-arrow-right-down-line" />
             <KpiCard label="Net P&L" value={format(netProfit, { compact: true })} fullValue={format(netProfit)} delta={{ value: "Live", positive: netProfit >= 0 }} hint="Estimated" icon="ri-scales-3-line" emphasis="gold" />
             <KpiCard label="Gold Stock" value={fmtWeight(stockWeight)} hint={`${(fineWeight).toFixed(1)}g fine`} icon="ri-archive-stack-line" />
-            <KpiCard label="Stock Value" value={format(stockValue, { compact: true })} fullValue={format(stockValue)} hint={`@ ${formatUSD(GOLD_PRICE.current)}/g`} icon="ri-coin-line" />
+            <KpiCard label="Stock Value" value={format(stockValue, { compact: true })} fullValue={format(stockValue)} hint={`@ ${formatUSD(goldPrice)}/g`} icon="ri-coin-line" />
             <KpiCard label="Pending Invoices" value={pendingInvoices.length.toString()} hint={`${format(pendingInvoices.reduce((a,b)=>a+Number(b.amount),0))} due`} icon="ri-file-paper-2-line" />
           </div>
 

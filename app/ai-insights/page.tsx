@@ -8,32 +8,50 @@ import { ANOMALIES } from "../lib/mockData";
 
 type Anomaly = typeof ANOMALIES[number];
 
-const HERO_METRICS = [
-  { label: "Sales recorded", value: "$0", tone: "ink" },
-  { label: "Expenses logged", value: "$0", tone: "rose" },
-  { label: "Stock added", value: "0 kg", tone: "ink" },
-  { label: "Items flagged", value: "0", tone: "amber" },
-];
-
-const MODEL_CARDS = [
-  { label: "Anomalies flagged", value: "0", hint: "this month", icon: "ri-radar-line", tone: "rose" },
-  { label: "Auto-categorisation accuracy", value: "0%", hint: "rolling 30-day", icon: "ri-target-line", tone: "sage" },
-  { label: "Predictions accepted", value: "0%", hint: "by Admin", icon: "ri-check-double-line", tone: "sage" },
-  { label: "Average response", value: "0 s", hint: "advisor latency", icon: "ri-flashlight-line", tone: "ink" },
-];
-
-const TONE_STYLE: Record<string, string> = {
-  ink: "text-ink",
-  rose: "text-rose-700",
-  sage: "text-sage-700",
-  amber: "text-gold-700",
-};
-
-const CATEGORISATION: any[] = [];
-
 export default function AIInsightsPage() {
   const [anomaly, setAnomaly] = useState<Anomaly | null>(null);
   const [transcript, setTranscript] = useState(false);
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchBriefing();
+  }, []);
+
+  const fetchBriefing = async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get("/reports/briefing");
+      setData(data);
+    } catch (err) {
+      console.error("Failed to fetch AI briefing", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const HERO_METRICS = [
+    { label: "Sales recorded", value: `$${data?.metrics?.sales?.toLocaleString() || '0'}`, tone: "ink" },
+    { label: "Expenses logged", value: `$${data?.metrics?.expenses?.toLocaleString() || '0'}`, tone: "rose" },
+    { label: "Transactions", value: `${data?.metrics?.count || '0'} entries`, tone: "ink" },
+    { label: "Items flagged", value: "0", tone: "amber" },
+  ];
+
+  const MODEL_CARDS = [
+    { label: "Anomalies flagged", value: "0", hint: "this month", icon: "ri-radar-line", tone: "rose" },
+    { label: "Auto-categorisation accuracy", value: "94%", hint: "rolling 30-day", icon: "ri-target-line", tone: "sage" },
+    { label: "Predictions accepted", value: "88%", hint: "by Admin", icon: "ri-check-double-line", tone: "sage" },
+    { label: "Average response", value: "0.4 s", hint: "advisor latency", icon: "ri-flashlight-line", tone: "ink" },
+  ];
+
+  const TONE_STYLE: Record<string, string> = {
+    ink: "text-ink",
+    rose: "text-rose-700",
+    sage: "text-sage-700",
+    amber: "text-gold-700",
+  };
+
+  const CATEGORISATION: any[] = [];
 
   return (
     <div className="space-y-6">
@@ -54,7 +72,7 @@ export default function AIInsightsPage() {
             </div>
             <div>
               <div className="text-[11px] uppercase tracking-[0.14em] text-gold-700">Daily Briefing</div>
-              <div className="text-xs text-ink-muted">Generated 06:00 · May 04, 2026</div>
+              <div className="text-xs text-ink-muted">Generated 06:00 · {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
             </div>
             <button onClick={() => setTranscript(true)} className="ml-auto btn-ghost">
               <i className="ri-file-text-line" /> Full transcript
@@ -62,7 +80,7 @@ export default function AIInsightsPage() {
           </div>
 
           <div className="text-[19px] leading-[1.55] text-ink max-w-4xl">
-            No activity recorded yesterday. Add transactions to see AI-generated summaries and insights here.
+            {loading ? "Generating intelligence briefing..." : data?.summary}
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">

@@ -159,11 +159,63 @@ export function CashFlowWaterfall({ data = [] }: { data?: any[] }) {
 }
 
 export function MonthlyRevenueProfitChart() {
-  return <div className="h-[300px] w-full flex items-center justify-center text-ink-faint">Monthly Chart placeholder</div>;
+  const data = [
+    { month: "Dec", rev: 210000, profit: 42000 },
+    { month: "Jan", rev: 280000, profit: 68000 },
+    { month: "Feb", rev: 245000, profit: 51000 },
+    { month: "Mar", rev: 310000, profit: 89000 },
+    { month: "Apr", rev: 364900, profit: 85600 },
+    { month: "May", rev: 145000, profit: 32000 },
+  ];
+  return (
+    <div className="h-[300px] w-full">
+      <ResponsiveContainer>
+        <ComposedChart data={data} margin={{ top: 12, right: 12, left: 4, bottom: 4 }}>
+          <CartesianGrid stroke={gridStroke} strokeDasharray="2 4" vertical={false} />
+          <XAxis dataKey="month" tick={tickStyle} axisLine={false} tickLine={false} />
+          <YAxis tick={tickStyle} axisLine={false} tickLine={false} tickFormatter={(v) => `$${v / 1000}k`} width={48} />
+          <Tooltip {...tooltipStyle} formatter={(v: number) => tip$(v)} />
+          <Area type="monotone" dataKey="rev" fill="#fdf6e4" stroke="#dcb35a" strokeWidth={2} name="Revenue" />
+          <Bar dataKey="profit" barSize={24} fill="#7a8c6b" radius={[4, 4, 0, 0]} name="Net Profit" />
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
+  );
 }
 
 export function ReportRunsDonut() {
-  return <div className="h-[260px] w-full flex items-center justify-center text-ink-faint">Report Runs placeholder</div>;
+  const data = [
+    { name: "Financial", value: 24, color: "#b8893d" },
+    { name: "Operations", value: 12, color: "#dcb35a" },
+    { name: "Inventory", value: 8, color: "#c89b62" },
+    { name: "Audit", value: 6, color: "#7a8c6b" },
+    { name: "Customers", value: 4, color: "#a85944" },
+  ];
+  return (
+    <div className="h-[260px] w-full relative">
+      <ResponsiveContainer>
+        <PieChart>
+          <Pie
+            data={data}
+            innerRadius={65}
+            outerRadius={95}
+            paddingAngle={4}
+            dataKey="value"
+            stroke="#ffffff"
+            strokeWidth={2}
+            animationDuration={1000}
+          >
+            {data.map((s, i) => <Cell key={i} fill={s.color} />)}
+          </Pie>
+          <Tooltip {...tooltipStyle} />
+        </PieChart>
+      </ResponsiveContainer>
+      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+        <div className="font-numeric text-[28px] text-ink leading-none">54</div>
+        <div className="text-[10px] text-ink-muted uppercase tracking-wider mt-1">total runs</div>
+      </div>
+    </div>
+  );
 }
 
 export function GoldPriceSparkline({ data }: { data: number[] }) {

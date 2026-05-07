@@ -8,38 +8,54 @@ import { CashFlowWaterfall } from "../components/Charts";
 import { useCurrency } from "../lib/currency-context";
 import { useDateRange } from "../lib/date-range-context";
 
-const SUMMARY = [
-  { label: "Gross Revenue", value: 364_900, tone: "ink" },
-  { label: "Total COGS", value: 198_300, tone: "ink" },
-  { label: "Gross Profit", value: 166_600, tone: "sage" },
-  { label: "Operating Expenses", value: 81_000, tone: "ink" },
-  { label: "Net Profit", value: 85_600, tone: "sage" },
-  { label: "Net Cash Position", value: 178_220, tone: "ink" },
-  { label: "Burn Rate", value: 64_900, tone: "terra" },
-  { label: "Runway", value: 0, tone: "ink", display: "27.5 mo" },
-];
-
 interface Flow { date: string; type: "in" | "out"; category: string; desc: string; amount: number; }
-
-const FLOWS: Flow[] = [
-  { date: "May 04", type: "in", category: "Gold sale proceeds", desc: "Mwanza Refinery Ltd. · INV-482", amount: 18_400 },
-  { date: "May 03", type: "out", category: "Gold purchase", desc: "Geita Cooperative", amount: 22_800 },
-  { date: "May 03", type: "out", category: "Logistics & Security", desc: "Armoured Transit · DSM", amount: 940 },
-  { date: "May 02", type: "in", category: "Investor capital", desc: "Amir K. — Round 2 tranche", amount: 50_000 },
-  { date: "May 02", type: "in", category: "Gold sale proceeds", desc: "Patel Jewellers", amount: 9_650 },
-  { date: "May 01", type: "out", category: "Staff salaries", desc: "April payroll · 12 staff", amount: 14_400 },
-  { date: "Apr 30", type: "out", category: "Operational", desc: "Office rent — May", amount: 2_800 },
-];
 
 export default function CashFlowPage() {
   const [filter, setFilter] = useState<"all" | "in" | "out">("all");
-  const [detail, setDetail] = useState<Flow | null>(null);
+  const [detail, setDetail] = useState<any | null>(null);
   const [adding, setAdding] = useState<"in" | "out" | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const [allFlows, setAllFlows] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const { format } = useCurrency();
   const { inRangeFromShortDate, label: rangeLabel } = useDateRange();
 
-  const flows = FLOWS
+  useEffect(() => {
+    fetchFlows();
+  }, []);
+
+  const fetchFlows = async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get("/reports/cash-flow");
+      // Map backend transactions to flow format
+      const mapped = data.map((t: any) => ({
+        ...t,
+        type: ["Gold Sale", "Cash Inflow"].includes(t.type) ? "in" : "out",
+        category: t.type,
+        desc: t.notes || t.ref,
+        date: new Date(t.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
+      }));
+      setAllFlows(mapped);
+    } catch (err) {
+      console.error("Failed to fetch flows", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const totalIn = allFlows.filter(f => f.type === 'in').reduce((a, b) => a + Number(b.amount), 0);
+  const totalOut = allFlows.filter(f => f.type === 'out').reduce((a, b) => a + Number(b.amount), 0);
+  const net = totalIn - totalOut;
+
+  const dynamicSummary = [
+    { label: "Gross Inflow", value: totalIn, tone: "ink" },
+    { label: "Total Outflow", value: totalOut, tone: "ink" },
+    { label: "Net Position", value: net, tone: net >= 0 ? "sage" : "terra" },
+    { label: "Confirmed Entries", value: allFlows.length, tone: "ink", display: allFlows.length.toString() },
+  ];
+
+  const flows = allFlows
     .filter((f) => inRangeFromShortDate(f.date))
     .filter((f) => filter === "all" || f.type === filter);
 
@@ -64,7 +80,7 @@ export default function CashFlowPage() {
       />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        {SUMMARY.map((s) => (
+        {dynamicSummary.map((s) => (
           <div key={s.label} className="surface p-4">
             <div className="text-[11px] uppercase tracking-[0.14em] text-ink-muted">{s.label}</div>
             <div className={`font-numeric text-2xl mt-1 ${
@@ -98,7 +114,9 @@ export default function CashFlowPage() {
             <tr><th>Date</th><th>Direction</th><th>Category</th><th>Description</th><th className="text-right">Amount</th><th /></tr>
           </thead>
           <tbody>
-            {flows.length === 0 ? (
+            {loading ? (
+              <tr><td colSpan={6} className="text-center py-20 text-ink-faint">Loading cash flows...</td></tr>
+            ) : flows.length === 0 ? (
               <tr><td colSpan={6} className="text-center text-ink-faint py-12">No cash flow entries in this date range.</td></tr>
             ) : flows.map((f, i) => (
               <tr key={i} className="clickable" onClick={() => setDetail(f)}>

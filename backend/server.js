@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
-dotenv.config();
+dotenv.config({ override: true });
 const sequelize = require('./config/database');
 require('./models/associations'); // Initialize associations
 
@@ -45,6 +45,8 @@ app.use('/api/transactions', require('./routes/transactionRoutes'));
 app.use('/api/contacts', require('./routes/contactRoutes'));
 app.use('/api/invoices', require('./routes/invoiceRoutes'));
 app.use('/api/quotations', require('./routes/quotationRoutes'));
+app.use('/api/reports', require('./routes/reportRoutes'));
+app.use('/api/settings', require('./routes/settingRoutes'));
 
 app.get('/', (req, res) => {
   res.send('GBMS API (SQLite) is running...');

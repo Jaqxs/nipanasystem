@@ -1,7 +1,7 @@
 const { Sequelize } = require('sequelize');
 const path = require('path');
 
-const sequelize = process.env.DATABASE_URL
+const sequelize = (process.env.DATABASE_URL && process.env.NODE_ENV === 'production')
   ? new Sequelize(process.env.DATABASE_URL, {
       logging: false,
       dialectOptions: {
