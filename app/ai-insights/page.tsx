@@ -1,10 +1,11 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PageHeader } from "../components/PageHeader";
 import { Badge } from "../components/Badge";
 import { Modal } from "../components/Modal";
 import { ProfitTrendChart } from "../components/Charts";
 import { ANOMALIES } from "../lib/mockData";
+import api from "../lib/api";
 
 type Anomaly = typeof ANOMALIES[number];
 
